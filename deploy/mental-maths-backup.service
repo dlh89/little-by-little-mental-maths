@@ -1,0 +1,9 @@
+[Unit]
+Description=Mental maths off-site database backup
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mental-maths-backup.env
+ExecStart=/bin/bash /opt/mental-maths/deploy/backup.sh
