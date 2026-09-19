@@ -7,23 +7,35 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createApp } from '../server.js';
 import { setPassword } from '../auth.js';
-import { SKILLS, makeQuestion, schedule, DAY } from '../engine.js';
+import { SKILLS, makeQuestion, schedule, DAY, selectSkills, categoryOf } from '../engine.js';
 import { openDatabase } from '../db.js';
 import { DatabaseSync } from 'node:sqlite';
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const blank = () => ({ skill: 'divide5', level: 0, step: -1, due: 0, last_day: -1, comfortable_days: 0, attempts: 0 });
+test('category presets and custom mixes select exactly the requested skills', () => {
+  for (const category of ['division', 'multiplication', 'percentages']) {
+    assert.deepEqual(selectSkills(category), Object.keys(SKILLS).filter(id => categoryOf(id) === category));
+  }
+  assert.ok(selectSkills('division').includes('divide3'));
+  assert.deepEqual(selectSkills('all', ['divide3', 'percent25', 'divide3']), ['divide3', 'percent25']);
+  for (const invalid of [[], ['unknown'], ['__proto__'], 'divide3', null]) assert.throws(() => selectSkills('all', invalid));
+  const q = makeQuestion('divide3', 1, () => 0);
+  assert.equal(q.prompt, '63 ÷ 3'); assert.equal(q.answer, '21');
+  assert.match(q.steps, /60 \+ 3/);
+});
 test('all arithmetic and percentage generators produce correct finite answers at all difficulties', () => {
   for (const [skill, spec] of Object.entries(SKILLS)) for (let level = 0; level < 3; level++) {
     for (let i = 0; i < 200; i++) {
       const q = makeQuestion(skill, level);
-      const answer = spec.op === '÷' ? Number(q.operand) / spec.factor : spec.op === '%' ? Number(q.operand) * spec.factor / 100 : Number(q.operand) * spec.factor;
+      const operand = Number(q.operand);
+      const answer = spec.adjustment ? operand * (1 + spec.adjustment * spec.factor / 100) : spec.op === '÷' ? operand / spec.factor : spec.op === '%' ? operand * spec.factor / 100 : operand * spec.factor;
       assert.ok(Math.abs(answer - Number(q.answer)) < 1e-8, q.prompt);
       assert.ok(!q.prompt.includes('000000000'));
       if (level === 0 && spec.op === '÷') assert.ok(Number.isInteger(Number(q.answer)));
       if (level === 2 && spec.op === '÷') assert.ok(!Number.isInteger(Number(q.answer)));
       if (spec.op === '%') {
-        assert.equal(q.prompt, `${spec.factor}% of ${q.operand}`);
+        assert.equal(q.prompt, spec.adjustment ? `${spec.adjustment > 0 ? 'Increase' : 'Decrease'} ${q.operand} by ${spec.factor}%` : `${spec.factor}% of ${q.operand}`);
         if (level === 0) assert.ok(Number.isInteger(Number(q.answer)));
       }
       assert.ok(q.method.length > 0 && q.steps.length > 0);
@@ -65,6 +77,10 @@ test('login, CSRF, idempotent saves, difficulty unlocks, logout and backup recov
   cookie = login.headers.get('set-cookie').split(';')[0];
   assert.equal((await (await call('state')).json()).bands.length, Object.keys(SKILLS).length);
   assert.equal((await call('question', { skill: '__proto__' })).status, 400);
+  assert.equal((await call('question', { skills: [] })).status, 400);
+  assert.equal((await call('question', { skills: ['divide3', 'unknown'] })).status, 400);
+  assert.equal((await (await call('question', { skills: ['divide3'] })).json()).skill, 'divide3');
+  assert.equal(categoryOf((await (await call('question', { skill: 'division' })).json()).skill), 'division');
   const q = await (await call('question', { mode: 'daily', skill: 'divide5' })).json();
   assert.equal((await call('review', { id: q.id, rating: 'bogus' })).status, 400);
   assert.equal((await call('review', { id: q.id, rating: 'comfortable' })).status, 200);
@@ -143,6 +159,10 @@ test('missed skills repeat until correct, survive restart, and cannot be skipped
   await call('login', { username: 'admin', password: 'test-password-long-enough' });
   const first = await call('question', { skill: 'divide5' });
   await call('review', { id: first.id, rating: 'missed' });
+  const outside = await call('question', { skill: 'multiplication', retryOnly: true });
+  assert.equal(outside.done, true); // An excluded missed skill must not leak into this round.
+  const custom = await call('question', { skills: ['percent25', 'multiply5'], mode: 'free' });
+  assert.ok(['percent25', 'multiply5'].includes(custom.skill));
   for (let i = 0; i < 2; i++) {
     const other = await call('question', {});
     assert.notEqual(other.skill, first.skill);

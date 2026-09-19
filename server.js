@@ -5,7 +5,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomBytes } from 'node:crypto';
 import { openDatabase, recordReview } from './db.js';
 import { checkPassword, digest, normalizeUsername } from './auth.js';
-import { SKILLS, LEVELS, DAY, makeQuestion } from './engine.js';
+import { SKILLS, LEVELS, DAY, makeQuestion, categoryOf, selectSkills } from './engine.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'data'), origin = process.env.APP_ORIGIN || 'http://127.0.0.1:8765', production = process.env.NODE_ENV === 'production', now = Date.now } = {}) {
@@ -65,13 +65,15 @@ export function createApp({ dataDir = process.env.DATA_DIR || path.join(root, 'd
         const bands = db.prepare('SELECT * FROM bands ORDER BY skill,level').all();
         return reply(200, { bands, now: time, due: bands.filter(b => b.due <= time).length,
           total: db.prepare('SELECT count(*) AS n FROM reviews').get().n,
-          skills: Object.entries(SKILLS).map(([id, s]) => ({ id, name: s.name })), levels: LEVELS });
+          skills: Object.entries(SKILLS).map(([id, s]) => ({ id, name: s.name, category: categoryOf(id) })), levels: LEVELS });
       }
       if (route === '/api/question' && req.method === 'POST') {
         const { mode = 'daily', skill = 'all', previous = '', retryOnly = false } = body;
-        if (!['daily', 'free'].includes(mode) || !(skill === 'all' || Object.hasOwn(SKILLS, skill))) return reply(400, { error: 'Unknown practice selection.' });
+        if (!['daily', 'free'].includes(mode)) return reply(400, { error: 'Unknown practice selection.' });
+        let selectedSkills;
+        try { selectedSkills = selectSkills(skill, body.skills); } catch (error) { return reply(400, { error: error.message }); }
         if (typeof retryOnly !== 'boolean') return reply(400, { error: 'Invalid round selection.' });
-        const bands = db.prepare('SELECT * FROM bands').all().filter(b => skill === 'all' || b.skill === skill);
+        const bands = db.prepare('SELECT * FROM bands').all().filter(b => selectedSkills.includes(b.skill));
         // Derive retries from durable review history so refreshes and new devices keep them.
         const latestReview = db.prepare(`SELECT r.rowid AS sequence,r.rating,
           (SELECT count(*) FROM reviews newer WHERE newer.rowid > r.rowid) AS since

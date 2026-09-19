@@ -45,7 +45,7 @@ async function run(action) {
     busy = false;
     document.querySelectorAll('button,select,input').forEach(e => { e.disabled = false; });
     if (local.wrong) document.querySelectorAll('[data-rating]:not([data-rating="missed"])').forEach(e => { e.disabled = true; });
-    if (local.pending.length) document.querySelectorAll('[data-rating],#mode,#skill,#typed,#reveal').forEach(e => { e.disabled = true; });
+    if (local.pending.length) document.querySelectorAll('[data-rating],#mode,#skill,#typed,#reveal,#edit-skills,#custom-picker button,#custom-picker input').forEach(e => { e.disabled = true; });
   }
 }
 async function flush() {
@@ -64,10 +64,37 @@ async function flush() {
 }
 async function refresh() {
   state = await api('state');
-  if ($('skill').options.length === 1) for (const s of state.skills) $('skill').add(new Option(s.name, s.id));
+  if (!$('skill').dataset.loaded) {
+    for (const s of state.skills) $('skill').add(new Option(s.name, s.id));
+    $('skill').dataset.loaded = 'true';
+  }
   if (![...$('skill').options].some(o => o.value === local.skill)) local.skill = 'all';
+  local.customSkills = Array.isArray(local.customSkills) ? local.customSkills.filter(id => state.skills.some(s => s.id === id)) : [];
+  if (local.skill === 'custom' && !local.customSkills.length) local.skill = 'all';
+  $('skill').querySelector('[value="custom"]').textContent = local.skill === 'custom' ? `Custom mix (${local.customSkills.length})` : 'Choose a custom mix…';
+  $('edit-skills').hidden = local.skill !== 'custom';
   $('skill').value = local.skill; $('mode').value = local.mode; $('typed').checked = Boolean(local.typed);
   renderProgress();
+}
+function selectedSkills() {
+  if (local.skill === 'custom') return local.customSkills;
+  return state.skills.filter(s => local.skill === 'all' || s.category === local.skill || s.id === local.skill).map(s => s.id);
+}
+function openSkillPicker() {
+  const selected = new Set(selectedSkills());
+  $('skill-checkboxes').replaceChildren();
+  for (const [category, name] of [['division', 'Division'], ['multiplication', 'Multiplication'], ['percentages', 'Percentages']]) {
+    const group = document.createElement('fieldset'), legend = document.createElement('legend');
+    legend.textContent = name; group.append(legend);
+    for (const s of state.skills.filter(s => s.category === category)) {
+      const label = document.createElement('label'), input = document.createElement('input');
+      input.type = 'checkbox'; input.value = s.id; input.checked = selected.has(s.id);
+      label.append(input, document.createTextNode(s.name)); group.append(label);
+    }
+    $('skill-checkboxes').append(group);
+  }
+  $('selection-error').textContent = '';
+  $('custom-picker').hidden = false;
 }
 function renderQuestion() {
   const q = local.question;
@@ -98,7 +125,7 @@ function finish(nextDue) {
 }
 async function nextQuestion() {
   if (!local.question) {
-    const q = await api('question', { mode: local.mode, skill: local.skill, previous: local.previous, retryOnly: local.count >= 10 });
+    const q = await api('question', { mode: local.mode, skills: selectedSkills(), previous: local.previous, retryOnly: local.count >= 10 });
     if (q.done) return finish(q.nextDue);
     local.question = q; local.revealed = false; local.wrong = false; local.entry = ''; persist();
   }
@@ -153,9 +180,23 @@ document.querySelectorAll('[data-rating]').forEach(b => { b.onclick = () => run(
   persist(); status('Saving your answer…');
   await flush(); await refresh(); await nextQuestion();
 }); });
-for (const id of ['mode', 'skill']) $(id).onchange = () => run(async () => {
-  await flush(); local[id] = $(id).value; local.count = 0; local.question = null; local.wrong = false; persist(); await nextQuestion();
-});
+async function changePractice(id, value) {
+  await flush(); local[id] = value; local.count = 0; local.question = null; local.wrong = false;
+  $('custom-picker').hidden = true; persist(); await refresh(); await nextQuestion();
+}
+$('mode').onchange = () => { const value = $('mode').value; run(() => changePractice('mode', value)); };
+$('skill').onchange = () => {
+  const value = $('skill').value;
+  if (value === 'custom') { openSkillPicker(); return; }
+  run(() => changePractice('skill', value));
+};
+$('apply-skills').onclick = () => {
+  const ids = [...$('skill-checkboxes').querySelectorAll('input:checked')].map(input => input.value);
+  if (!ids.length) { $('selection-error').textContent = 'Choose at least one skill.'; return; }
+  run(async () => { await flush(); local.customSkills = ids; await changePractice('skill', 'custom'); });
+};
+$('cancel-skills').onclick = () => { $('custom-picker').hidden = true; $('skill').value = local.skill; };
+$('edit-skills').onclick = openSkillPicker;
 $('typed').onchange = () => { local.typed = $('typed').checked; local.revealed = false; local.wrong = false; local.entry = ''; persist(); renderQuestion(); };
 $('continue').onclick = () => run(async () => { local.mode = 'free'; local.count = 0; local.question = null; local.wrong = false; persist(); $('mode').value = 'free'; await nextQuestion(); });
 function showView(progress) {

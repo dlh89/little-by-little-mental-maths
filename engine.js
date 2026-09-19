@@ -2,6 +2,7 @@ export const DAY = 86_400_000;
 export const INTERVALS = [1, 3, 7, 14, 30, 60];
 export const LEVELS = ['Friendly numbers', 'Larger numbers', 'Decimals'];
 export const SKILLS = {
+  divide3: { name: 'Divide by 3', op: '÷', factor: 3 },
   divide5: { name: 'Divide by 5', op: '÷', factor: 5 },
   multiply25: { name: 'Multiply by 25', op: '×', factor: 25 },
   divide15: { name: 'Divide by 1.5', op: '÷', factor: 1.5 },
@@ -21,12 +22,35 @@ export const SKILLS = {
   percent25: { name: 'Find 25%', op: '%', factor: 25, denominator: 4 },
   percent10: { name: 'Find 10%', op: '%', factor: 10, denominator: 10 },
   percent50: { name: 'Find 50%', op: '%', factor: 50, denominator: 2 },
+  divide6: { name: 'Divide by 6', op: '÷', factor: 6 },
+  multiply9: { name: 'Multiply by 9', op: '×', factor: 9 },
+  multiply11: { name: 'Multiply by 11', op: '×', factor: 11 },
+  divideHalf: { name: 'Divide by 0.5', op: '÷', factor: 0.5 },
+  divideQuarter: { name: 'Divide by 0.25', op: '÷', factor: 0.25 },
+  percent75: { name: 'Find 75%', op: '%', factor: 75, denominator: 4 },
+  increase10: { name: 'Increase by 10%', op: '%', factor: 10, denominator: 10, adjustment: 1 },
+  decrease10: { name: 'Decrease by 10%', op: '%', factor: 10, denominator: 10, adjustment: -1 },
+  increase20: { name: 'Increase by 20%', op: '%', factor: 20, denominator: 5, adjustment: 1 },
+  decrease20: { name: 'Decrease by 20%', op: '%', factor: 20, denominator: 5, adjustment: -1 },
+  increase25: { name: 'Increase by 25%', op: '%', factor: 25, denominator: 4, adjustment: 1 },
+  decrease25: { name: 'Decrease by 25%', op: '%', factor: 25, denominator: 4, adjustment: -1 },
 };
 export const format = n => String(Math.round(n * 10000) / 10000);
+export const categoryOf = skill => ({ '÷': 'division', '×': 'multiplication', '%': 'percentages' })[SKILLS[skill]?.op];
+export function selectSkills(skill = 'all', skills) {
+  if (skills !== undefined) {
+    if (!Array.isArray(skills) || !skills.length || skills.length > Object.keys(SKILLS).length || skills.some(id => typeof id !== 'string' || !Object.hasOwn(SKILLS, id))) throw new Error('Choose at least one valid skill.');
+    return [...new Set(skills)];
+  }
+  if (skill === 'all') return Object.keys(SKILLS);
+  if (['division', 'multiplication', 'percentages'].includes(skill)) return Object.keys(SKILLS).filter(id => categoryOf(id) === skill);
+  if (typeof skill === 'string' && Object.hasOwn(SKILLS, skill)) return [skill];
+  throw new Error('Unknown practice selection.');
+}
 export function makeQuestion(skill, level, random = Math.random) {
   if (!SKILLS[skill] || !Number.isInteger(level) || level < 0 || level > 2) throw new Error('Invalid skill or level');
   const int = (min, max) => min + Math.floor(random() * (max - min + 1));
-  const { name, op, factor, denominator } = SKILLS[skill];
+  const { name, op, factor, denominator, adjustment } = SKILLS[skill];
   let base = level === 0 ? int(2, 20) : int(21, 180);
   if (level === 2) {
     base = int(11, 399) / 10;
@@ -37,10 +61,15 @@ export function makeQuestion(skill, level, random = Math.random) {
   if (level === 0 && skill === 'multiply15decimal') base = int(1, 10) * 2;
   if (level === 0 && skill === 'multiply12decimal') base = int(1, 10) * 5;
   if (level === 0 && skill === 'multiply125') base = int(1, 10) * 8;
+  if (level === 0 && skill === 'divideHalf') base = int(2, 20) * 2;
+  if (level === 0 && skill === 'divideQuarter') base = int(2, 20) * 4;
   const operand = op === '÷' ? base * factor : op === '%' && level < 2 ? base * denominator : base;
-  const result = op === '÷' ? base : op === '%' ? operand * factor / 100 : base * factor;
+  const portion = operand * factor / 100;
+  const result = adjustment ? operand + adjustment * portion : op === '÷' ? base : op === '%' ? portion : base * factor;
   const n = format(operand), a = format(result), f = format;
+  const tens = Math.floor(result / 10) * 10;
   const methods = {
+    divide3: ['Split into easy multiples of 3.', tens > 0 && result !== tens ? `${n} = ${f(tens * 3)} + ${f(operand - tens * 3)}; divide each by 3: ${tens} + ${f(result - tens)} = ${a}` : `3 × ${a} = ${n}, so ${n} ÷ 3 = ${a}`],
     divide5: ['Double, then divide by 10.', `${n} × 2 = ${f(operand * 2)}; ${f(operand * 2)} ÷ 10 = ${a}`],
     multiply25: ['Multiply by 100, then halve twice.', `${n} × 100 = ${f(operand * 100)}; half is ${f(operand * 50)}; half again is ${a}`],
     divide15: ['Double, then divide by 3.', `${n} × 2 = ${f(operand * 2)}; ${f(operand * 2)} ÷ 3 = ${a}`],
@@ -60,8 +89,19 @@ export function makeQuestion(skill, level, random = Math.random) {
     percent25: ['25% is one quarter: halve twice.', `${n} → ${f(operand / 2)} → ${a}`],
     percent10: ['Divide by 10.', `${n} ÷ 10 = ${a}`],
     percent50: ['50% is one half: halve the number.', `${n} ÷ 2 = ${a}`],
+    divide6: ['Divide by 3, then halve—or halve, then divide by 3.', `${n} ÷ 3 = ${f(operand / 3)}; ${f(operand / 3)} ÷ 2 = ${a}`],
+    multiply9: ['Multiply by 10, then subtract the original number.', `${n} × 10 = ${f(operand * 10)}; ${f(operand * 10)} − ${n} = ${a}`],
+    multiply11: ['Multiply by 10, then add the original number.', `${n} × 10 = ${f(operand * 10)}; ${f(operand * 10)} + ${n} = ${a}`],
+    divideHalf: ['Dividing by one half doubles the number.', `${n} × 2 = ${a}`],
+    divideQuarter: ['Dividing by one quarter multiplies the number by 4.', `Double ${n} to get ${f(operand * 2)}; double again to get ${a}`],
+    percent75: ['Find one quarter, then subtract it from the whole.', `25% of ${n} = ${f(operand / 4)}; ${n} − ${f(operand / 4)} = ${a}`],
   };
-  return { skill, level, label: name, operand: n, prompt: op === '%' ? `${factor}% of ${n}` : `${n} ${op} ${factor}`, answer: a, method: methods[skill][0], steps: methods[skill][1] };
+  const [method, steps] = adjustment ? [
+    `Find ${factor}%, then ${adjustment > 0 ? 'add it to' : 'subtract it from'} the original number.`,
+    `${factor}% of ${n} = ${n} ÷ ${denominator} = ${f(portion)}; ${n} ${adjustment > 0 ? '+' : '−'} ${f(portion)} = ${a}`,
+  ] : methods[skill];
+  const prompt = adjustment ? `${adjustment > 0 ? 'Increase' : 'Decrease'} ${n} by ${factor}%` : op === '%' ? `${factor}% of ${n}` : `${n} ${op} ${factor}`;
+  return { skill, level, label: name, operand: n, prompt, answer: a, method, steps };
 }
 
 // One growth step per UTC day prevents same-day drilling from inflating retention.

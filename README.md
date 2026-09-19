@@ -19,12 +19,13 @@ npm test
 
 ## Practice
 
-- Nineteen question types: ÷5, ×25, ÷1.5, ÷1.2, ÷4, ×5, ÷8, ×1.5, ×1.2, ÷25, ×15, ×125; plus finding 5%, 15%, 12.5%, 20%, 25%, 10% and 50%.
+- Thirty-two question types: ÷3, ÷5, ×25, ÷1.5, ÷1.2, ÷4, ×5, ÷8, ×1.5, ×1.2, ÷25, ×15, ×125; plus finding 5%, 15%, 12.5%, 20%, 25%, 10% and 50%. Additional skills: ÷6, ×9, ×11, ÷0.5, ÷0.25, finding 75%, and increasing/decreasing by 10%, 20% and 25%. Percentage changes ask for the final total, not just the percentage amount.
 - Percentage wording has its own review history and difficulty progression, even where the calculation matches a division skill. Tips explain these connections. Existing progress is preserved when new skills are added.
 - Reveal and self-rate, or turn on typed answers (incorrect typed answers can only be rated “Missed it”).
 - Daily reviews finish when nothing is due, or after ten questions plus any outstanding retries. Choose free practice to continue or focus on a skill.
 - Friendly numbers, larger numbers, decimals. Three comfortable reviews on distinct UTC days unlock the next band, available the next day. Older bands remain in review. A miss or slow answer resets the comfortable-day count, but does not remove unlocked levels.
 - Comfortable: 1, 3, 7, 14, 30, then 60 days. Slow: tomorrow. Missed: a new example from the same skill and level after two intervening answers (or five minutes, whichever comes first). If nothing else is due, or the ten-question round is ending, retry immediately. Unresolved retries persist in server history, including across reloads. A successful same-day retry moves the review to tomorrow without advancing mastery. Same-day drilling cannot advance the interval sequence. This is a transparent heuristic, **not FSRS or a validated optimal scheduler**.
+- Choose all skills, division only, multiplication only, percentages only, one skill, or any custom mix. Selection applies to daily reviews, free practice and retries. Excluded skills keep their saved progress and unresolved retries. Your selection stays on this device; new skills automatically join category presets, while custom mixes remain exactly as chosen.
 - Review dates and learning progress sync through the server. Session position and input preference are device-local.
 
 ## Data safety
